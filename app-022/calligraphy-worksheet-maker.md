@@ -30,7 +30,8 @@
 9. **模板库与校验尺**：5 套预置模板；第 1 页附 100mm 校验尺用于核对物理尺寸。
 
 ## 5. 进阶功能
-- **自定义笔顺数据导入**：支持 `{chars:{...}}` 全量包、`{字:{strokes,...}}` 单字映射、`{strokes:[...]}` 绑定当前字三种格式，写入 localStorage 并即时生效。
+- **自定义笔顺数据导入**：支持 `{chars:{...}}` 全量包、`{字:{strokes,...}}` 单字映射、`{strokes:[...]}` 绑定当前字三种格式，写入 localStorage 并即时生效；**撞字时弹冲突取舍框**（列出每个撞字的旧/新笔画数与来源，统一选「保留旧数据」或「换成新数据」）。
+- **导入数据管理**（编辑器左栏「管理导入数据」）：列出全部导入字（笔画数、来源文件名、导入时间，最近导入在前）、标注「覆盖内置同字 / 内置无此字」；可删除单个导入字（该字自动退回内置数据）、可二次确认后一次清空并全部退回内置；右栏单字面板显示当前字数据来源。导入/删除/清空通过订阅 `subscribeDataChanges` + `useDataVersion` 让预览、分页与笔顺演示立即重画，跨标签页 `storage` 事件同步。
 - **按笔画数排序**：用于把生字表排成由易到难。
 - **单字编辑**：面板内替换（同字去重）与删除该字，文本域与预览同步。
 - **大屏笔顺播放页**：`/play/:id` 以 90mm 尺寸逐笔演示，速度预设 250/400/600ms，方向键切换字。
@@ -66,7 +67,7 @@ type Block = { char: string; cells: Cell[] };   // 一个字的小格组合
 type Row = Block[]; type Page = Row[];
 ```
 - 笔顺数据：`public/data/strokes.json`，`{ format: 'hanzi-writer-v1', count, chars: { 字: { strokes: string[], medians: number[][][] } } }`，实测 `count = 1096`、2,590,937 字节。
-- localStorage 键：`app022:worksheets`（字帖数组，新存的排最前）、`app022:customStrokes`（导入的补充笔顺）。
+- localStorage 键：`app022:worksheets`（字帖数组，新存的排最前）、`app022:customStrokes`（导入的补充笔顺，v2 结构 `{version:2, entries:{字:{strokes,medians,file,importedAt}}}`；旧版纯映射在 `initData` 时自动迁移，file 记为「早期导入（无文件名记录）」、importedAt=0）。
 - 部首/结构取自 `src/lib/charinfo.ts` 的 `CHAR_META`（字 → [部首, 结构]，结构取值 `left_right | top_bottom | single | enclosure`），未收录不展示。
 
 ## 8. 关键算法（关键实现点）
@@ -90,8 +91,8 @@ type Row = Block[]; type Page = Row[];
 - 可访问性：播放器是 `role="img"` + `aria-label`，圆点与按钮带 `aria-label`，播放器可聚焦并有焦点样式；导入的文案与页脚页码都是真实文本。
 
 ## 10. 验收标准
-- **单元测试 31 项**（`tests/unit/`：layout 16、data-import 5、pinyin 5、strokes-data 5 个 `it`）全绿：去重保序、过滤标点、按笔画数排序稳定、`maxPerLine(20)=10`、`maxLines(20,2)=10`、`clampLayout` 边界、`buildBlock` 组合序列、块不超一行、分页不拆字、空内容一页、笔顺数据格式与抽查笔画数（火 4、必 5、方 4、里 7、女 3、绿 11、门 3、飞 3、马 3、鸟 5）、拼音多音字、模板 5 套。
-- **E2E 24 项**（`e2e/`：main-flow 16、print-and-perf 8 个 `test`）通过：主流程统计为 `5 字 · 1 页`、100 字 → `10 页` 且 100 个块无孤儿；「花」7 画出现 7 个步骤圆点、「木」4 画；「行」4 个读音选项且选择后刷新仍在。
+- **单元测试 39 项**（`tests/unit/`：layout 16、data-import 13、pinyin 5、strokes-data 5 个 `it`）全绿：去重保序、过滤标点、按笔画数排序稳定、`maxPerLine(20)=10`、`maxLines(20,2)=10`、`clampLayout` 边界、`buildBlock` 组合序列、块不超一行、分页不拆字、空内容一页、笔顺数据格式与抽查笔画数（火 4、必 5、方 4、里 7、女 3、绿 11、门 3、飞 3、马 3、鸟 5）、拼音多音字、模板 5 套、导入预检/冲突取舍/列表/单删/清空/旧格式迁移。
+- **E2E 28 项**（`e2e/`：main-flow 20、print-and-perf 8 个 `test`）通过：主流程统计为 `5 字 · 1 页`、100 字 → `10 页` 且 100 个块无孤儿；「花」7 画出现 7 个步骤圆点、「木」4 画；「行」4 个读音选项且选择后刷新仍在；导入撞内置字弹冲突框、留旧仍 7 画/换新变 1 画；管理列表显示笔画/来源文件/时间，单删后「无笔顺数据」标注恢复，清空后自定义计数归 0。
 - **打印一致性**：100mm 校验尺在屏幕宽度落在 375.9~379.9px（1mm = 3.7795px）；`page.pdf({ format: 'A4' })` 的 `/Type /Page` 计数与预览页数一致（100 字 → 10 页）。
 - **无笔顺数据**：`㐀` 显示「无笔顺数据」，块内描红路径数为 0；导入笔顺 JSON 后提示「已导入 1 条」且标注消失。
 - **性能**：100 字全量重排 < 200ms。

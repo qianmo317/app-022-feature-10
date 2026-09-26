@@ -59,6 +59,7 @@ test.describe('主流程', () => {
     await expect(page.locator('[data-testid="char-panel"]')).toContainText('选中字：花');
     // 笔顺播放器：花 7 画，出现 7 个步骤圆点
     await expect(page.locator('[data-testid="stroke-dot"]')).toHaveCount(7);
+    await page.click('[data-testid="player-reset"]'); // 自动播放可能已经播完，重置回第 1 笔
     await expect(page.locator('[data-testid="player-step"]')).toContainText('1 / 7');
     await page.click('[data-testid="player-next"]');
     await expect(page.locator('[data-testid="player-step"]')).toContainText('2 / 7');
@@ -127,6 +128,120 @@ test.describe('主流程', () => {
     });
     await expect(page.locator('[data-testid="import-msg"]')).toContainText('已导入 1 条');
     await expect(page.locator('[data-no-stroke]')).toHaveCount(0);
+  });
+
+  test('导入撞内置字：可选择留旧或换新，选后笔顺立即变化', async ({ page }) => {
+    await createWorksheet(page, '花');
+    await expect(page.locator('[data-testid="stroke-dot"]')).toHaveCount(7); // 内置 花 7 画
+    const payload = JSON.stringify({
+      chars: { 花: { strokes: ['M10 80 L90 20'], medians: [[[10, 80], [90, 20]]] } },
+    });
+    const file = { name: 'hua.json', mimeType: 'application/json', buffer: Buffer.from(payload) };
+
+    // 第一次导入：弹冲突取舍，选择保留旧数据
+    await page.locator('[data-testid="import-strokes"]').setInputFiles(file);
+    await expect(page.locator('[data-testid="conflict-dialog"]')).toBeVisible();
+    await expect(page.locator('[data-testid="conflict-count"]')).toHaveText('1');
+    await expect(page.locator('[data-testid="conflict-item"]')).toContainText('花');
+    await expect(page.locator('[data-testid="conflict-item"]')).toContainText('旧：7 画 · 内置笔顺数据');
+    await expect(page.locator('[data-testid="conflict-item"]')).toContainText('新：1 画 · hua.json');
+    await page.click('[data-testid="conflict-keep"]');
+    await page.click('[data-testid="conflict-commit"]');
+    await expect(page.locator('[data-testid="import-msg"]')).toContainText('保留旧数据');
+    await expect(page.locator('[data-testid="stroke-dot"]')).toHaveCount(7); // 仍是内置的 7 画
+    await expect(page.locator('[data-testid="char-source"]')).toContainText('内置数据');
+
+    // 第二次导入同一文件：换成新数据
+    await page.locator('[data-testid="import-strokes"]').setInputFiles(file);
+    await expect(page.locator('[data-testid="conflict-dialog"]')).toBeVisible();
+    await page.click('[data-testid="conflict-replace"]');
+    await page.click('[data-testid="conflict-commit"]');
+    await expect(page.locator('[data-testid="import-msg"]')).toContainText('替换 1');
+    await expect(page.locator('[data-testid="stroke-dot"]')).toHaveCount(1); // 换成新的 1 画
+    await expect(page.locator('[data-testid="char-source"]')).toContainText('导入数据（覆盖内置同字）');
+  });
+
+  test('导入管理：列出字/笔画/来源文件/时间，可删单个并立即退回', async ({ page }) => {
+    await createWorksheet(page, '㐀');
+    const payload = JSON.stringify({
+      chars: {
+        㐀: { strokes: ['M10 80 L90 20'], medians: [[[10, 80], [90, 20]]] },
+        㐂: { strokes: ['M0 0 L1 1', 'M2 2 L3 3'], medians: [[[0, 0]], [[2, 2]]] },
+      },
+    });
+    await page.locator('[data-testid="import-strokes"]').setInputFiles({
+      name: 'extra.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(payload),
+    });
+    await expect(page.locator('[data-testid="import-msg"]')).toContainText('新增 2');
+    await expect(page.locator('[data-testid="data-stats"]')).toContainText('自定义 2 字');
+
+    await page.click('[data-testid="open-manager"]');
+    await expect(page.locator('[data-testid="manager-list"] [data-testid="manager-item"]')).toHaveCount(2);
+    const firstItem = page.locator('[data-testid="manager-item"]', { hasText: '㐀' }).first();
+    await expect(firstItem.locator('[data-testid="manager-strokes"]')).toHaveText('1 画');
+    await expect(firstItem.locator('[data-testid="manager-file"]')).toHaveText('来自 extra.json');
+    await expect(firstItem.locator('[data-testid="manager-time"]')).toHaveText(/20\d\d-\d\d-\d\d \d\d:\d\d/);
+
+    // 删除 㐀：列表少一条，预览立即恢复「无笔顺数据」
+    await firstItem.locator('[data-testid="manager-delete"]').click();
+    await expect(page.locator('[data-testid="manager-list"] [data-testid="manager-item"]')).toHaveCount(1);
+    await expect(page.locator('[data-no-stroke]')).toBeVisible();
+    await expect(page.locator('[data-testid="data-stats"]')).toContainText('自定义 1 字');
+
+    await page.keyboard.press('Escape');
+  });
+
+  test('清空全部导入数据并退回内置', async ({ page }) => {
+    await createWorksheet(page, '㐀');
+    const payload = JSON.stringify({
+      chars: {
+        㐀: { strokes: ['M10 80 L90 20'], medians: [[[10, 80], [90, 20]]] },
+        㐂: { strokes: ['M0 0 L1 1'], medians: [[[0, 0]]] },
+      },
+    });
+    await page.locator('[data-testid="import-strokes"]').setInputFiles({
+      name: 'extra.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(payload),
+    });
+    await page.click('[data-testid="open-manager"]');
+    await page.click('[data-testid="clear-all"]');
+    await expect(page.locator('[data-testid="clear-confirm-text"]')).toBeVisible();
+    await page.click('[data-testid="clear-cancel"]');
+    await expect(page.locator('[data-testid="manager-list"] [data-testid="manager-item"]')).toHaveCount(2);
+    await page.click('[data-testid="clear-all"]');
+    await page.click('[data-testid="clear-confirm-btn"]');
+    await expect(page.locator('[data-testid="manager-empty"]')).toBeVisible();
+    await expect(page.locator('[data-testid="data-stats"]')).toContainText('自定义 0 字');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-no-stroke]')).toBeVisible();
+  });
+
+  test('删除覆盖内置的导入字后笔顺演示退回内置画法', async ({ page }) => {
+    await createWorksheet(page, '花');
+    const payload = JSON.stringify({
+      chars: { 花: { strokes: ['M10 80 L90 20'], medians: [[[10, 80], [90, 20]]] } },
+    });
+    await page.locator('[data-testid="import-strokes"]').setInputFiles({
+      name: 'hua.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(payload),
+    });
+    await page.click('[data-testid="conflict-replace"]');
+    await page.click('[data-testid="conflict-commit"]');
+    await expect(page.locator('[data-testid="stroke-dot"]')).toHaveCount(1);
+
+    await page.click('[data-testid="open-manager"]');
+    const item = page.locator('[data-testid="manager-item"]', { hasText: '花' });
+    await expect(item.locator('[data-testid="manager-override"]')).toHaveText('覆盖内置同字');
+    await item.locator('[data-testid="manager-delete"]').click();
+    await expect(page.locator('[data-testid="manager-empty"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await expect(page.locator('[data-testid="stroke-dot"]')).toHaveCount(7); // 退回内置 7 画
+    await expect(page.locator('[data-testid="char-source"]')).toContainText('内置数据');
   });
 
   test('导出 SVG / PNG 触发下载', async ({ page }) => {

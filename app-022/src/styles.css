@@ -160,3 +160,53 @@ textarea { width: 100%; resize: vertical; }
   background: #fff; border-radius: 6px; cursor: pointer;
 }
 .play-chars button.active { background: #2f6fed; color: #fff; border-color: #2f6fed; }
+
+/* ---------- 弹层 ---------- */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.42);
+  display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+}
+.modal-box {
+  background: #fff; border-radius: 10px; max-width: 100%; max-height: 90vh;
+  display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28);
+  outline: none;
+}
+.modal-box:focus { outline: none; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #e3e7ec; }
+.modal-head h3 { margin: 0; font-size: 15px; }
+.modal-close { padding: 2px 8px; font-size: 13px; }
+.modal-body { padding: 14px 16px; overflow-y: auto; }
+.modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.btn-sm { padding: 3px 10px; font-size: 12px; }
+
+/* ---------- 导入管理 ---------- */
+.manager-empty { padding: 28px 0; text-align: center; color: #6b7280; }
+.manager-list { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid #e3e7ec; border-radius: 8px; max-height: 46vh; overflow-y: auto; }
+.manager-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid #eef1f4; }
+.manager-item:last-child { border-bottom: none; }
+.manager-char {
+  width: 40px; height: 40px; flex-shrink: 0; font-size: 22px; line-height: 1;
+  border: 1px solid #c3c9d1; background: #fafbfc; border-radius: 6px; cursor: pointer; color: #1f2328;
+}
+.manager-char:hover { border-color: #2f6fed; color: #2f6fed; }
+.manager-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #4b5563; }
+.manager-strokes { font-weight: 700; color: #1f2328; }
+.manager-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manager-time { color: #9ca3af; }
+.badge {
+  align-self: flex-start; font-size: 11px; color: #2f6fed; background: #eaf1fe;
+  border: 1px solid #c5d8fb; border-radius: 10px; padding: 0 8px; line-height: 17px;
+}
+.badge-override { color: #b45309; background: #fef6e7; border-color: #f3ddae; }
+
+/* ---------- 冲突取舍 ---------- */
+.conflict-list { list-style: none; margin: 10px 0; padding: 0; max-height: 38vh; overflow-y: auto; border: 1px solid #e3e7ec; border-radius: 8px; }
+.conflict-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid #eef1f4; font-size: 12px; flex-wrap: wrap; }
+.conflict-item:last-child { border-bottom: none; }
+.conflict-char { font-size: 20px; width: 30px; text-align: center; font-weight: 700; }
+.conflict-side { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
+.conflict-side.old { color: #6b7280; }
+.conflict-side.new { color: #1d4ed8; }
+.conflict-arrow { color: #9ca3af; }
+.conflict-choices { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; font-size: 13px; }
+.conflict-choices label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; }

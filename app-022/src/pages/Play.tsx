@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { useWorksheetDoc } from '../hooks';
+import { useWorksheetDoc, useDataVersion } from '../hooks';
 import { StrokePlayer, SPEED_PRESETS } from '../components/StrokePlayer';
 
 /** 笔顺播放页：大屏逐笔演示，←→ 切换字 */
@@ -10,6 +10,8 @@ export default function Play(): JSX.Element {
   const { ws, notFound } = useWorksheetDoc(id);
   const [idx, setIdx] = useState(0);
   const [speed, setSpeed] = useState(400);
+  // 导入数据被删除/清空时立即按退回后的数据重画
+  const dataVer = useDataVersion();
 
   useEffect(() => {
     setIdx(0);
@@ -54,7 +56,7 @@ export default function Play(): JSX.Element {
             <button className="btn" data-testid="play-prev" onClick={() => setIdx((i) => Math.max(0, i - 1))}>
               ← 上一字
             </button>
-            <StrokePlayer key={char} char={char} sizeMm={90} autoPlay speed={speed} />
+            <StrokePlayer key={`${char}-${dataVer}`} char={char} sizeMm={90} autoPlay speed={speed} />
             <button className="btn" data-testid="play-next" onClick={() => setIdx((i) => Math.min(chars.length - 1, i + 1))}>
               下一字 →
             </button>

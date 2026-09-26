@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import type { Worksheet } from './types';
 import { getWorksheet } from './lib/storage';
+import { getDataVersion, subscribeDataChanges } from './lib/data';
 
 /** 按路由 id 加载字帖文档；找不到时置 notFound */
 export function useWorksheetDoc(id: string | undefined) {
@@ -24,4 +25,11 @@ export function isFormTarget(e: Event): boolean {
   const t = e.target as HTMLElement | null;
   if (!t) return false;
   return t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable;
+}
+
+/** 笔顺数据版本号：导入/删除/清空后递增，驱动预览与笔顺演示立即重画 */
+export function useDataVersion(): number {
+  const [, force] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => subscribeDataChanges(force), []);
+  return getDataVersion();
 }
