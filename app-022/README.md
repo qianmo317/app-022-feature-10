@@ -15,6 +15,7 @@
 - **导出**：单页导出 SVG / PNG（4x 高清），打印走浏览器 `Ctrl/Cmd+P`（A4、页边距 0）
 - **模板库**：预置五套模板（一年级生字、古诗、姓名练字、ABC、拼音）
 - **离线笔顺数据**：`public/data/strokes.json` 内置 1096 个常用字（hanzi-writer-v1 格式，2.59MB），加载后完全离线可用
+- **导入笔顺可管理**：导入的笔顺逐字可查（笔画数 / 来源文件 / 导入时间），撞字时逐字选择保留旧数据或用新数据；可删单个字或一键清空退回内置，删除后预览与笔顺演示立即重画；导入数据优先于内置数据，撞内置字时明确标注「覆盖内置」
 - **本地保存**：编辑内容与配置存于 localStorage，刷新不丢失
 
 ## 技术栈
@@ -51,8 +52,8 @@ app-022/
 │   ├── pages/                    # Home / Editor / PrintView / Library / Play
 │   ├── hooks.ts                  # useWorksheetDoc / isFormTarget
 │   ├── App.tsx / main.tsx / styles.css / types.ts
-├── tests/unit/                   # 31 个单元测试（layout/pinyin/strokes-data/data-import）
-├── e2e/                          # 24 个 Playwright E2E 用例（main-flow / print-and-perf）
+├── tests/unit/                   # 39 个单元测试（layout/pinyin/strokes-data/data-import）
+├── e2e/                          # 30 个 Playwright E2E 用例（main-flow / print-and-perf / stroke-import）
 ├── playwright.config.ts          # E2E 端口 4322（preview 服务器）
 ├── Dockerfile                    # node:20-alpine 构建 → nginx:1.27-alpine-slim 运行
 ├── nginx.conf                    # gzip / /healthz / 静态缓存策略 / SPA 回退
@@ -83,10 +84,10 @@ npm run gen:data     # 生成 public/data/strokes.json
 ## 测试
 
 ```bash
-# 单元测试（31 项：分页不拆字 / buildBlock 规则 / 笔顺数据完整性 / 拼音多音字 / 去重排序等）
+# 单元测试（39 项：分页不拆字 / buildBlock 规则 / 笔顺数据完整性 / 拼音多音字 / 去重排序 / 导入数据管理等）
 npm test
 
-# E2E 测试（24 项：主流程 / 去重 / 导出 / 100 字分页 10 页 / 1:1 校验尺 / PDF 页数 / 性能 / healthz）
+# E2E 测试（30 项：主流程 / 去重 / 导出 / 100 字分页 10 页 / 1:1 校验尺 / PDF 页数 / 性能 / healthz / 导入笔顺管理）
 npx playwright install chromium   # 首次需要
 npm run e2e                       # 端口 4322，自动拉起 preview 服务器
 ```

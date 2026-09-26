@@ -13,10 +13,21 @@ import {
 } from '../lib/layout';
 import { parseInput } from '../lib/input';
 import { readingsOf } from '../lib/pinyin';
-import { charMetaOf, dataStats, importStrokes, strokeCountOf } from '../lib/data';
+import {
+  applyImport,
+  charMetaOf,
+  dataStats,
+  hasBuiltinStrokes,
+  planImport,
+  strokeCountOf,
+  strokeSourceOf,
+} from '../lib/data';
+import type { ImportCandidate } from '../lib/data';
 import { saveWorksheet } from '../lib/storage';
 import { PageView } from '../components/PageView';
 import { StrokePlayer } from '../components/StrokePlayer';
+import { ImportConflictDialog } from '../components/ImportConflictDialog';
+import { ImportedCharsManager } from '../components/ImportedCharsManager';
 import { exportPng, exportSvg } from '../lib/exportImage';
 import { isFormTarget, useWorksheetDoc } from '../hooks';
 
@@ -94,6 +105,8 @@ export default function Editor(): JSX.Element {
   const [replaceText, setReplaceText] = useState('');
   const [dataVer, setDataVer] = useState(0);
   const [exportPage, setExportPage] = useState(0);
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{ plan: ImportCandidate[]; fileName: string } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
   // 进入编辑器时初始化输入框与选中字
@@ -118,22 +131,22 @@ export default function Editor(): JSX.Element {
     return () => window.removeEventListener('resize', calc);
   }, []);
 
-  // 自动保存（防抖），并记录页数
+  // 自动保存（防抖），并记录页数；导入数据增删（dataVer）也会影响分页
   useEffect(() => {
     if (!ws) return;
     const t = setTimeout(() => {
       saveWorksheet({ ...ws, pages: paginate(ws.chars, ws.layout, strokeCountOf).length, updatedAt: Date.now() });
     }, 250);
     return () => clearTimeout(t);
-  }, [ws]);
+  }, [ws, dataVer]);
 
   // 选中字失效时回退到第一个字
   useEffect(() => {
     if (ws && ws.chars.length > 0 && !ws.chars.includes(selected)) setSelected(ws.chars[0]);
   }, [ws, selected]);
 
-  // 页码选择器越界回退
-  const pageCount = useMemo(() => (ws ? paginate(ws.chars, ws.layout, strokeCountOf).length : 0), [ws]);
+  // 页码选择器越界回退；页数随内容与导入数据（dataVer）变化
+  const pageCount = useMemo(() => (ws ? paginate(ws.chars, ws.layout, strokeCountOf).length : 0), [ws, dataVer]);
   useEffect(() => {
     setExportPage((p) => Math.min(p, Math.max(0, pageCount - 1)));
   }, [pageCount]);
@@ -170,6 +183,7 @@ export default function Editor(): JSX.Element {
   const readings = char ? readingsOf(char) : [];
   const meta = char ? charMetaOf(char) : undefined;
   const strokeCount = char ? strokeCountOf(char) : undefined;
+  const strokeSource = char ? strokeSourceOf(char) : undefined;
   const stats = dataStats();
   const scale = zoom === 'fit' ? fitScale : zoom;
 
@@ -219,13 +233,37 @@ export default function Editor(): JSX.Element {
     if (!f) return;
     try {
       const json: unknown = JSON.parse(await f.text());
-      const n = importStrokes(json, selected);
-      setDataVer((v) => v + 1);
-      setImportMsg(`已导入 ${n} 条笔顺数据`);
+      const plan = planImport(json, selected || undefined);
+      if (plan.length === 0) {
+        setImportMsg('导入失败：文件中没有可识别的笔顺数据');
+      } else if (plan.some((c) => c.conflictWith)) {
+        // 有字与现有数据重复：交给老师逐字选择保留哪一份
+        setPendingImport({ plan, fileName: f.name });
+        setImportMsg('');
+      } else {
+        const n = applyImport(plan, { fileName: f.name, overwrite: 'all' });
+        setDataVer((v) => v + 1);
+        setImportMsg(`已导入 ${n} 条笔顺数据`);
+      }
     } catch (err) {
       setImportMsg(`导入失败：${err instanceof Error ? err.message : String(err)}`);
     }
     e.target.value = '';
+  };
+
+  const confirmImport = (overwrite: ReadonlySet<string>) => {
+    if (!pendingImport) return;
+    const kept = pendingImport.plan.filter((c) => c.conflictWith && !overwrite.has(c.char)).length;
+    const n = applyImport(pendingImport.plan, { fileName: pendingImport.fileName, overwrite });
+    setPendingImport(null);
+    setDataVer((v) => v + 1);
+    setImportMsg(
+      kept > 0
+        ? n > 0
+          ? `已导入 ${n} 条笔顺数据（${kept} 字保留原数据）`
+          : `未导入新数据，${kept} 字保留原数据`
+        : `已导入 ${n} 条笔顺数据`,
+    );
   };
 
   return (
@@ -359,8 +397,13 @@ export default function Editor(): JSX.Element {
 
           <h3>笔顺数据</h3>
           <p className="hint" data-testid="data-stats">
-            内置 {stats.bundled} 字 · 自定义 {stats.custom} 字
+            内置 {stats.bundled} 字 · 已导入 {stats.custom} 字
+            {stats.overriding > 0 ? `（${stats.overriding} 字覆盖内置）` : ''}
           </p>
+          <p className="hint">导入数据优先于内置数据使用，删除后退回内置。</p>
+          <button className="btn" data-testid="manage-imports" onClick={() => setManagerOpen(true)}>
+            管理导入数据
+          </button>
         </aside>
 
         {/* 中栏：预览 */}
@@ -389,7 +432,7 @@ export default function Editor(): JSX.Element {
           {char ? (
             <>
               <h3>选中字：{char}</h3>
-              <StrokePlayer key={char} char={char} sizeMm={40} autoPlay />
+              <StrokePlayer key={`${char}:${dataVer}`} char={char} sizeMm={40} autoPlay />
               {readings.length > 0 ? (
                 <div className="field-group">
                   <span>拼音{readings.length > 1 ? '（多音字）' : ''}</span>
@@ -415,6 +458,14 @@ export default function Editor(): JSX.Element {
                 <li>部首：{meta?.radical ?? '—'}</li>
                 <li>笔画：{strokeCount ?? '—'}</li>
                 <li>结构：{meta?.structure ? (STRUCTURE_LABELS[meta.structure] ?? '—') : '—'}</li>
+                <li data-testid="stroke-source">
+                  笔顺来源：
+                  {strokeSource
+                    ? strokeSource.kind === 'builtin'
+                      ? '内置数据'
+                      : `导入（${strokeSource.fileName}）${hasBuiltinStrokes(char) ? '，覆盖内置' : ''}`
+                    : '—'}
+                </li>
               </ul>
               <div className="field-row">
                 <input
@@ -436,6 +487,20 @@ export default function Editor(): JSX.Element {
           )}
         </aside>
       </div>
+
+      {/* 导入数据管理弹窗：删除/清空后通过 dataVer 触发预览与笔顺演示重画 */}
+      {managerOpen && (
+        <ImportedCharsManager onClose={() => setManagerOpen(false)} onChanged={() => setDataVer((v) => v + 1)} />
+      )}
+      {/* 导入冲突选择弹窗 */}
+      {pendingImport && (
+        <ImportConflictDialog
+          plan={pendingImport.plan}
+          fileName={pendingImport.fileName}
+          onCancel={() => setPendingImport(null)}
+          onConfirm={confirmImport}
+        />
+      )}
     </div>
   );
 }
